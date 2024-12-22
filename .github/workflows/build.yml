@@ -1,0 +1,38 @@
+name: Lint and Build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the code
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Set up Node.js environment
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      # Install dependencies
+      - name: Install Dependencies
+        run: npm install
+
+      # Run linting
+      - name: Run Linter
+        run: npm run lint
+
+      # Build the application
+      - name: Build Application
+        run: npm run build
+
+      # Optionally, verify build output
+      - name: Verify Build Output
+        run: ls -la dist
