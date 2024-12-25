@@ -4,4 +4,6 @@ export const routes: Routes = [
   { path: '', redirectTo: 'home', pathMatch: 'full' },
   { path: 'home', loadComponent: () => import('@pages/home/home.component').then(m => m.HomeComponent) },
   { path: 'chat', loadComponent: () => import('@pages/chat/chat-room/chat-room.component').then(m => m.ChatRoomComponent) },
+  { path: 'login', loadComponent: () => import('@core/auth/pages/login/login.component').then(m => m.LoginComponent) },
+  { path: 'register', loadComponent: () => import('@core/auth/pages/register/register.component').then(m => m.RegisterComponent) },
 ];

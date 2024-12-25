@@ -9,6 +9,4 @@ import { Toast } from 'primeng/toast';
   standalone: true,
   styleUrl: './app.component.scss',
 })
-export class AppComponent {
-  title = 'current-directory';
-}
+export class AppComponent {}
