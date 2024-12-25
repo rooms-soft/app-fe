@@ -1,0 +1,48 @@
+<ng-container>
+  <div class="flex gap-2">
+    <p-button
+      (click)="toggleVideo()"
+      [severity]="localVideoEnabled ? 'danger' : 'primary'"
+      [disabled]="isMediaDenied"
+    >
+      <i class="pi pi-video"></i>
+    </p-button>
+
+    <p-button
+      (click)="toggleAudio()"
+      [severity]="localAudioEnabled ? 'danger' : 'primary'"
+      [disabled]="isMediaDenied"
+    >
+      <i class="pi pi-microphone"></i>
+    </p-button>
+  </div>
+
+  <div class="flex flex-wrap gap-2 justify-center content-center min-h-[90vh]">
+    <div class="h-[35vh] w-[28vw] relative">
+      <video
+        autoplay
+        playsinline
+        class="border-4 border-blue-500 rounded-lg shadow-lg h-[35vh] w-[28vw]"
+        [srcObject]="streamService.localStream()"
+      ></video>
+
+      <i
+        *ngIf="isMediaDenied"
+        class="pi pi-ban text-slate-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+        style="font-size: 3rem"
+      ></i>
+    </div>
+
+    <div
+      class="h-[35vh] w-[28vw] relative"
+      *ngIf="streamService.remoteStream()"
+    >
+      <video
+        autoplay
+        playsinline
+        class="border-4 border-blue-500 rounded-lg shadow-lg h-[35vh] w-[28vw]"
+        [srcObject]="streamService.remoteStream()"
+      ></video>
+    </div>
+  </div>
+</ng-container>
