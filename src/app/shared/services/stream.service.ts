@@ -1,43 +1,31 @@
 import { inject, Injectable, signal } from '@angular/core';
-import { BehaviorSubject, catchError, filter, first, from, Observable, of, tap } from 'rxjs';
+import { catchError, filter, first, from, of, tap } from 'rxjs';
 import { ToastService } from '@shared/services/toast.service';
-import { MediaSourceStatus } from '@shared/types/media-source-status';
-import { MediaSourceType } from '@shared/types/media-source-type';
-import { toObservable } from '@angular/core/rxjs-interop';
+import { ChatService } from '@shared/services/chat.service';
+import { ChatSessionModel } from '@shared/types/chat-session.model';
+import { SdpEventTypeEnum } from '@shared/types/sdp-event-type.enum';
+import { ChatSignalEventEnum } from '@shared/types/chat-signal-event.enum';
+import { environment } from '@env/environment';
 
 @Injectable({
   providedIn: 'root',
 })
 export class StreamService {
-  readonly localStream = signal<MediaStream | null>(null);
-  readonly remoteStream = signal<MediaStream | null>(null);
-  readonly peerConnection = signal(new RTCPeerConnection());
+  session: ChatSessionModel | null = null;
 
-  private readonly cameraPermissionSubject = new BehaviorSubject<MediaSourceStatus | null>(null);
-  private readonly microphonePermissionSubject = new BehaviorSubject<MediaSourceStatus | null>(null);
+  readonly localStream = signal<MediaStream | null>(null);
+  readonly remoteStream = signal<MediaStream>(new MediaStream());
+  peerConnection = new RTCPeerConnection(this.STUN_SERVERS);
+
   private readonly toastService = inject(ToastService);
+  private readonly chatService = inject(ChatService);
 
   constructor() {
-    this.initializePermissionListener(MediaSourceType.camera, this.cameraPermissionSubject);
-    this.initializePermissionListener(MediaSourceType.microphone, this.cameraPermissionSubject);
-
-    toObservable(this.localStream)
-      .pipe(
-        filter(Boolean),
-        first(),
-        tap(async () => {
-          await this.sendOffer();
-        }),
-      )
-      .subscribe();
+    this.subscribeChatSignalEvents();
   }
 
-  get cameraPermission$(): Observable<MediaSourceStatus | null> {
-    return this.cameraPermissionSubject.asObservable();
-  }
-
-  get microphonePermission$(): Observable<MediaSourceStatus | null> {
-    return this.microphonePermissionSubject.asObservable();
+  get STUN_SERVERS() {
+    return environment.STUN_SERVERS;
   }
 
   getPermission(): void {
@@ -55,55 +43,88 @@ export class StreamService {
   }
 
 
-  async sendOffer(): Promise<void> {
-    this.remoteStream.set(new MediaStream());
+  async getOffer(senderId: string) {
+    this.initPeerConnection(senderId);
 
-    this.localStream()
-      ?.getTracks()
-      .forEach((track) => this.peerConnection().addTrack(track, this.localStream() as MediaStream));
+    const offer = await this.peerConnection.createOffer();
+    await this.peerConnection.setLocalDescription(offer);
 
-    this.peerConnection().ontrack = (event) => {
+    return offer;
+  }
+
+  async getAnswer(offerSDP: RTCSessionDescriptionInit, senderId: string) {
+    this.initPeerConnection(senderId);
+
+    await this.peerConnection.setRemoteDescription(offerSDP);
+    const answer = await this.peerConnection.createAnswer();
+    await this.peerConnection.setLocalDescription(answer);
+
+    return answer;
+  }
+
+  private initPeerConnection(senderId: string) {
+    this.peerConnection.ontrack = (event) => {
       event.streams[0].getTracks().forEach((track) => {
         this.remoteStream()?.addTrack(track);
       });
     };
 
-    const offer = await this.peerConnection().createOffer();
-    await this.peerConnection().setLocalDescription(offer);
-
-    await this.sendAnswer(offer);
-  }
-
-  async sendAnswer(offerSDP: RTCSessionDescriptionInit): Promise<void> {
     this.localStream()
       ?.getTracks()
-      .forEach((track) => this.peerConnection().addTrack(track, this.localStream() as MediaStream));
+      .forEach((track) => this.peerConnection.addTrack(track, this.localStream() as MediaStream));
 
-    await this.peerConnection().setRemoteDescription(offerSDP);
-
-    // TODO: to make it work, answer from another peer
-    const answer = await this.peerConnection().createAnswer();
-    await this.peerConnection().setLocalDescription(answer);
-
-    this.initPeerConnection(answer);
+    this.peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        this.chatService.chatSocket.emit(ChatSignalEventEnum.SDP_EVENT, {
+          sdp: JSON.stringify(event.candidate),
+          type: SdpEventTypeEnum.ice,
+          senderId: this.session?.id,
+          recipientId: senderId,
+        });
+      }
+    };
   }
 
-  initPeerConnection(answer: RTCSessionDescriptionInit): void {
-    if (!this.peerConnection().currentRemoteDescription) {
-      this.peerConnection().setRemoteDescription(answer);
-    }
+  private acceptAnswer(answer: RTCSessionDescriptionInit) {
+    from(this.peerConnection.setRemoteDescription(answer)).subscribe();
   }
 
-  private async initializePermissionListener(
-    permissionName: MediaSourceType,
-    subject: BehaviorSubject<MediaSourceStatus | null>,
-  ): Promise<void> {
-    const permissionStatus = await navigator.permissions.query({ name: permissionName as unknown as PermissionName });
+  private subscribeChatSignalEvents() {
+    this.chatService.chatSocket.on(ChatSignalEventEnum.JOIN_SUCCESS, (session) => this.session = session);
 
-    subject.next(permissionStatus.state as MediaSourceStatus);
+    this.chatService.chatSocket.on(ChatSignalEventEnum.LEAVE_EVENT, async (data) => {
+      this.toastService.show('success', 'Info', data.message);
+      this.peerConnection = new RTCPeerConnection(this.STUN_SERVERS);
+    });
 
-    permissionStatus.addEventListener('change', () => {
-      subject.next(permissionStatus.state as MediaSourceStatus);
+    this.chatService.chatSocket.on(ChatSignalEventEnum.CONNECTION_EVENT, async (data) => {
+      this.toastService.show('success', 'Info', data.message);
+      this.peerConnection = new RTCPeerConnection(this.STUN_SERVERS);
+      const offer = await this.getOffer(data.sessionId);
+
+      this.chatService.chatSocket.emit(ChatSignalEventEnum.SDP_EVENT, {
+        sdp: JSON.stringify(offer),
+        type: SdpEventTypeEnum.offer,
+        senderId: this.session?.id,
+        recipientId: data.sessionId,
+      });
+    });
+
+    this.chatService.chatSocket.on(ChatSignalEventEnum.SDP_EVENT, async (data: { senderId: string; type: string, sdp: string }) => {
+      if (data.type === SdpEventTypeEnum.offer) {
+        const answer = await this.getAnswer(JSON.parse(data.sdp), data.senderId);
+
+        this.chatService.chatSocket.emit(ChatSignalEventEnum.SDP_EVENT, {
+          sdp: JSON.stringify(answer),
+          type: SdpEventTypeEnum.answer,
+          senderId: this.session?.id,
+          recipientId: data.senderId,
+        });
+      } else if (data.type === SdpEventTypeEnum.ice) {
+        await this.peerConnection.addIceCandidate(JSON.parse(data.sdp));
+      } else {
+        this.acceptAnswer(JSON.parse(data.sdp));
+      }
     });
   }
 }

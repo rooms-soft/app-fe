@@ -1,0 +1,13 @@
+<header class="bg-emerald-300 flex justify-between items-center p-2">
+  <div class="flex gap-5">
+    @if (!authService.loggedUser()) {
+      <p-button routerLink="/login" severity="secondary">Login</p-button>
+      <p-button routerLink="/register" severity="secondary">Register</p-button>
+    } @else {
+      <p-button severity="secondary" (click)="authService.logout()">Logout</p-button>
+      <p-button routerLink="/chat/list" severity="secondary">My rooms</p-button>
+    }
+  </div>
+
+  <h1 class="text-emerald-900 text-3xl font-bold">Rooms</h1>
+</header>

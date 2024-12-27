@@ -1,9 +1,10 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { Component, HostListener, inject, OnInit } from '@angular/core';
 import { StreamService } from '@shared/services/stream.service';
 import { CommonModule } from '@angular/common';
-import { MediaSourceStatus } from '@shared/types/media-source-status';
 import { Button } from 'primeng/button';
-import { combineLatest } from 'rxjs';
+import { first, tap } from 'rxjs';
+import { ChatService } from '@shared/services/chat.service';
+import { ActivatedRoute, Router } from '@angular/router';
 
 @Component({
   selector: 'app-chat-room',
@@ -16,8 +17,12 @@ import { combineLatest } from 'rxjs';
 })
 export class ChatRoomComponent implements OnInit {
   isMediaDenied = false;
+  chatId!: string;
 
   readonly streamService = inject(StreamService);
+  readonly chatService = inject(ChatService);
+  readonly router = inject(Router);
+  readonly activeRoute = inject(ActivatedRoute);
 
   get localVideoEnabled() {
     return this.streamService.localStream()?.getVideoTracks()
@@ -29,19 +34,24 @@ export class ChatRoomComponent implements OnInit {
       .some((track) => track.enabled);
   }
 
+  @HostListener('window:beforeunload', ['$event'])
+  beforeUnloadHandler() {
+    this.streamService.peerConnection.close();
+    this.chatService.leaveChat(this.chatId);
+  }
+
   ngOnInit() {
     this.streamService.getPermission();
 
-    combineLatest([
-      this.streamService.cameraPermission$,
-      this.streamService.microphonePermission$,
-    ]).subscribe(([cameraStatus, microphoneStatus]) => {
-      if (cameraStatus === MediaSourceStatus.granted || microphoneStatus === MediaSourceStatus.granted) {
-        this.streamService.getPermission();
-      }
-
-      this.isMediaDenied = cameraStatus === MediaSourceStatus.denied || microphoneStatus === MediaSourceStatus.denied;
-    });
+    this.activeRoute.params
+      .pipe(
+        first(),
+        tap(({ chatId }) => {
+          this.chatId = chatId;
+          this.chatService.joinChat(chatId);
+        }),
+      )
+      .subscribe();
   }
 
   toggleVideo() {

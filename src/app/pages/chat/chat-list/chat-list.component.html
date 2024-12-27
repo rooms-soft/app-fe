@@ -1,0 +1,40 @@
+<p-dialog [(visible)]="visible" [modal]="true" [style]="{ width: '25rem' }">
+  <ng-template #header>
+    <h4 class="text-lg font-semibold">Create chat</h4>
+  </ng-template>
+
+  <span class="text-surface-500 block mb-8">
+    Create a new chat by entering the name.
+  </span>
+
+  <div class="flex items-center gap-4 mb-4">
+    <label for="username" class="font-semibold w-24">Name</label>
+    <input
+      pInputText
+      id="username"
+      class="flex-auto"
+      autocomplete="off"
+      [disabled]="createChatForm.invalid"
+      [formControl]="createChatForm.controls.name"
+    />
+  </div>
+
+  <ng-template #footer>
+    <p-button label="Cancel" [text]="true" severity="secondary" (click)="visible = false" />
+    <p-button
+      label="Save"
+      severity="secondary"
+      [outlined]="true"
+      (click)="onSaveChat()"
+    />
+  </ng-template>
+</p-dialog>
+
+<div class="px-[25vw] pt-20">
+  <p-button severity="secondary" label="Create chat" (click)="showDialog()" />
+
+  <div *ngFor="let chat of (chats$ | async); trackBy: trackByChatId" class="flex items-center justify-between p-4 border-b border-gray-200">
+    <span class="text-lg">{{ chat.name }}</span>
+    <p-button label="Join" (click)="joinChat(chat.id)" class="p-button-sm" />
+  </div>
+</div>
